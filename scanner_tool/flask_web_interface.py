@@ -2166,7 +2166,7 @@ def parse_port_range(port_range: str) -> List[int]:
     
     return sorted(list(set(ports)))
 
-def scan_worker(scan_id: str, target: str, ports: List[int], thread_count: int, timeout: float):
+def scan_worker(scan_id: str, target: str, ports: List[int], thread_count: int, timeout: float, user_id=None):
     """
     Step 11: Worker function to execute a scan in a separate thread.
     This function runs in the background and performs the actual port scanning.
@@ -2177,6 +2177,7 @@ def scan_worker(scan_id: str, target: str, ports: List[int], thread_count: int, 
         ports: List of ports to scan
         thread_count: Number of threads to use
         timeout: Socket timeout in seconds
+        user_id: ID of the user who initiated the scan (for access control)
     """
     try:
         # Step 11.1: Initialize scan state
@@ -2185,7 +2186,8 @@ def scan_worker(scan_id: str, target: str, ports: List[int], thread_count: int, 
             'progress': 0,           # 0% progress initially
             'start_time': datetime.now(),  # Record start time
             'logs': [],              # Empty log list
-            'results': {}            # Empty results dict
+            'results': {},           # Empty results dict
+            'user_id': user_id       # Store user ID for access control
         }
         
         # Step 11.2: Resolve target hostname to IP address
@@ -2604,6 +2606,9 @@ def api_start_scan():
     data = request.json
     import multiprocessing
     
+    # Get user ID from session (if authenticated)
+    user_id = session.get('user_id')
+    
     # Step 14.3.2: Validate input
     if not data or 'target' not in data:
         return jsonify({'error': 'Missing target host'}), 400
@@ -2659,7 +2664,7 @@ def api_start_scan():
     # This allows the web interface to remain responsive during scanning
     scan_thread = threading.Thread(
         target=scan_worker,
-        args=(scan_id, target, ports, thread_count, timeout),
+        args=(scan_id, target, ports, thread_count, timeout, user_id),
         daemon=True  # Daemon thread will be terminated when main thread exits
     )
     scan_thread.start()
@@ -2673,12 +2678,24 @@ def api_scan_status(scan_id):
     Step 14.4: API endpoint to get scan status.
     This allows the client to poll for updates on an ongoing scan.
     """
+    # Get current user ID if authenticated
+    user_id = session.get('user_id')
+    
     # Step 14.4.1: Check if scan exists
     if scan_id not in active_scans:
         return jsonify({'error': 'Scan not found'}), 404
     
     # Step 14.4.2: Get scan data
     scan_data = active_scans[scan_id]
+    
+    # If user is authenticated, check if they have permission to view this scan
+    if user_id:
+        scan_user_id = scan_data.get('user_id')
+        if scan_user_id and scan_user_id != user_id:
+            return jsonify({
+                'error': 'You do not have permission to view this scan.',
+                'scan_id': scan_id
+            }), 403
     
     # Step 14.4.3: Add CPU core information if not already present
     if 'cpu_cores' not in scan_data:
@@ -2737,9 +2754,23 @@ def api_stop_scan(scan_id):
     Step 14.5: API endpoint to stop a scan.
     This allows users to cancel an ongoing scan.
     """
+    # Get current user ID if authenticated
+    user_id = session.get('user_id')
+    
     # Step 14.5.1: Check if scan exists
     if scan_id not in active_scans:
         return jsonify({'error': 'Scan not found'}), 404
+    
+    scan_data = active_scans[scan_id]
+    
+    # If user is authenticated, check if they have permission to stop this scan
+    if user_id:
+        scan_user_id = scan_data.get('user_id')
+        if scan_user_id and scan_user_id != user_id:
+            return jsonify({
+                'error': 'You do not have permission to stop this scan.',
+                'scan_id': scan_id
+            }), 403
     
     # Step 14.5.2: Mark the scan as stopped
     complete_scan(scan_id, 'stopped')
@@ -2920,6 +2951,11 @@ def api_dashboard_data():
     API endpoint to get dashboard data including all scans, statistics, and security issues.
     This provides data for the real-time dashboard.
     """
+    # Get current user ID from session
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User not authenticated"}), 401
+        
     # Collect all completed scans (from both active_scans and scan_results)
     all_scans = []
     
@@ -2927,6 +2963,11 @@ def api_dashboard_data():
     for scan_id, results in scan_results.items():
         if scan_id in active_scans:
             scan_data = active_scans[scan_id]
+            
+            # Skip scans that don't belong to the current user
+            scan_user_id = scan_data.get('user_id')
+            if scan_user_id and scan_user_id != user_id:
+                continue
             
             # Extract target from scan_id (format: timestamp_target)
             target = scan_id.split('_', 1)[1] if '_' in scan_id else 'unknown'
@@ -3012,6 +3053,11 @@ def api_dashboard_data():
     # Also include running scans that might not have results yet
     for scan_id, scan_data in active_scans.items():
         if scan_id not in scan_results and scan_data.get('status') == 'running':
+            # Skip scans that don't belong to the current user
+            scan_user_id = scan_data.get('user_id')
+            if scan_user_id and scan_user_id != user_id:
+                continue
+                
             # Extract target from scan_id
             target = scan_id.split('_', 1)[1] if '_' in scan_id else 'unknown'
             
@@ -3116,6 +3162,11 @@ def api_scan_details(scan_id):
     API endpoint to get detailed information about a specific scan.
     This provides data for the scan details modal.
     """
+    # Get current user ID from session
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User not authenticated"}), 401
+        
     # Check if scan exists
     if scan_id not in active_scans:
         # Return a helpful error message instead of just "Scan not found"
@@ -3125,6 +3176,14 @@ def api_scan_details(scan_id):
         }), 404
     
     scan_data = active_scans[scan_id]
+    
+    # Check if the scan belongs to the current user
+    scan_user_id = scan_data.get('user_id')
+    if scan_user_id and scan_user_id != user_id:
+        return jsonify({
+            'error': 'You do not have permission to view this scan.',
+            'scan_id': scan_id
+        }), 403
     
     # Calculate scan duration
     duration = 0
