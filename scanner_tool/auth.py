@@ -94,6 +94,38 @@ def signup():
 
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
+    # Handle confirmation tokens or access_tokens from email verification
+    token = request.args.get('access_token')
+    refresh_token = request.args.get('refresh_token')
+    
+    # If tokens are present in URL (redirected from email confirmation)
+    if token and refresh_token:
+        try:
+            # Exchange tokens for a session
+            auth_response = supabase.auth.set_session(token, refresh_token)
+            user = auth_response.user
+            
+            if user:
+                # Fetch the user profile from the public 'users' table to get the bigint ID
+                profile_res = supabase.table('users').select("id").eq('email', user.email).single().execute()
+                
+                if not profile_res.data:
+                    flash('User profile not found. Please contact support.', 'error')
+                    return redirect(url_for('auth.login'))
+
+                # Set session data
+                session['user_id'] = profile_res.data['id'] # This is the bigint ID
+                session['auth_user_id'] = user.id # This is the UUID
+                session['username'] = user.user_metadata.get('username', 'N/A')
+                flash('Email confirmed! Welcome back!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Error processing confirmation. Please try logging in.', 'error')
+        except Exception as e:
+            from flask import current_app
+            current_app.logger.error(f"Error handling confirmation token: {str(e)}")
+            flash('Error processing confirmation. Please try logging in.', 'error')
+    
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
