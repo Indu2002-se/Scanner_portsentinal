@@ -10,6 +10,7 @@
     const portRangeInput = document.getElementById('port-range');
     const threadsInput = document.getElementById('threads');
     const timeoutInput = document.getElementById('timeout');
+    const scanTechniqueSelect = document.getElementById('scan-technique');
     const usePredefinedCheck = document.getElementById('use-predefined');
     const scanButton = document.getElementById('scan-button');
     const stopButton = document.getElementById('stop-button');
@@ -21,6 +22,7 @@
     const exportModal = document.getElementById('export-modal');
     const threadWarning = document.getElementById('thread-warning');
     const currentTimeElem = document.getElementById('current-time');
+    const techniqueDescription = document.querySelector('.technique-description');
 
     // Update current time
     function updateTime() {
@@ -41,6 +43,7 @@
 
         // Event listeners
         usePredefinedCheck.addEventListener('change', togglePortInput);
+        scanTechniqueSelect.addEventListener('change', updateTechniqueDescription);
 
         // Check thread count on input to show warnings
         threadsInput.addEventListener('input', function() {
@@ -55,7 +58,46 @@
                 threadWarning.style.display = 'none';
             }
         });
+        
+        // Set initial technique description
+        updateTechniqueDescription();
     });
+    
+    // Update the technique description based on selection
+    function updateTechniqueDescription() {
+        const selectedTechnique = scanTechniqueSelect.value;
+        let description = "";
+        
+        switch(selectedTechnique) {
+            case 'tcp_connect':
+                description = "Choose the scanning technique. TCP Connect is recommended for general use.";
+                break;
+            case 'syn':
+                description = "SYN (Half-Open) scan sends SYN packets without completing the handshake. Less detectable but requires privileges.";
+                break;
+            case 'fin':
+                description = "FIN scan sends packets with the FIN flag set. Useful for bypassing simple firewalls.";
+                break;
+            case 'null':
+                description = "NULL scan sends packets with no flags set. May bypass certain packet filters.";
+                break;
+            case 'xmas':
+                description = "XMAS scan sends packets with FIN, PSH, URG flags set. Useful for firewall evasion.";
+                break;
+            case 'ack':
+                description = "ACK scan helps determine firewall filtering rules rather than open ports.";
+                break;
+            case 'udp':
+                description = "UDP scan tests UDP ports. Often slower but finds services TCP scans miss.";
+                break;
+            default:
+                description = "Choose the scanning technique. TCP Connect is recommended for general use.";
+        }
+        
+        if (techniqueDescription) {
+            techniqueDescription.textContent = description;
+        }
+    }
 
     // Tab navigation
     function showTab(tabId) {
@@ -138,7 +180,8 @@
             target: targetInput.value.trim(),
             port_range: portRangeInput.value.trim(),
             threads: parseInt(threadsInput.value),
-            timeout: parseFloat(timeoutInput.value)
+            timeout: parseFloat(timeoutInput.value),
+            scan_technique: scanTechniqueSelect.value
         };
 
         // Update UI
@@ -153,6 +196,7 @@
 
         // Log scan start
         addLogEntry(`Starting scan on ${scanData.target} with ${scanData.threads} threads`, 'info');
+        addLogEntry(`Scan technique: ${scanTechniqueSelect.options[scanTechniqueSelect.selectedIndex].text}`, 'info');
         addLogEntry(`Timeout set to ${scanData.timeout} seconds`, 'info');
 
         // Check and warn about excessive thread count

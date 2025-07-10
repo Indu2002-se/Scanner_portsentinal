@@ -110,6 +110,24 @@
                 </div>
             </div>
 
+            <div class="form-group">
+                <label for="scan-technique">Scan Technique:</label>
+                <div class="input-group">
+                    <select id="scan-technique" name="scan-technique" class="form-control tech-input">
+                        <option value="tcp_connect">TCP Connect Scan (Default)</option>
+                        <option value="syn">SYN Scan (Half-Open)</option>
+                        <option value="fin">FIN Scan</option>
+                        <option value="null">NULL Scan</option>
+                        <option value="xmas">XMAS Scan</option>
+                        <option value="ack">ACK Scan</option>
+                        <option value="udp">UDP Scan</option>
+                    </select>
+                </div>
+                <div class="technique-description tech-description">
+                    Choose the scanning technique. TCP Connect is recommended for general use.
+                </div>
+            </div>
+
             <div class="form-group advanced tech-panel">
                 <label for="threads">Threads:</label>
                 <input type="number" id="threads" name="threads" value="10" min="1" max="100" class="form-control-sm tech-input">
